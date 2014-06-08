@@ -624,7 +624,6 @@ luashixiong = sgs.CreateTriggerSkill
 tangqiaozhi:addSkill(luachongqian)
 tangqiaozhi:addSkill(luashixiong)
 --------------------------------------
-killLimit = 1
 
 luabuzuiBuff = sgs.CreateTargetModSkill
 {--不醉生效
@@ -632,7 +631,7 @@ luabuzuiBuff = sgs.CreateTargetModSkill
 	pattern = "Slash",
 	residue_func = function(self,player)
 		local buzuistatekey = "buzuistate"
-		if player:hasSkill(self:objectName()) and (1==player:GPSget(buzuistatekey)) then
+		if player:hasSkill(self:objectName()) and (1==player:getMark(buzuistatekey)) then
 			writeLog("luabuzuiBuff.forever kill")
 			return 900
 		else
@@ -654,15 +653,15 @@ luabuzui = sgs.CreateTriggerSkill
 		
 		if( player:GPSget(buzuistatekey)==1) then
 			writeLog("luabuzui.shouldSkipPlay")
-			player:GPSset(buzuistatekey, 2)
+			room:setPlayerMark(player, buzuistatekey, 2)
 		else
 			if (room:askForSkillInvoke(player, "luabuzui")) then	
 				room:broadcastSkillInvoke("luabuzui")
 				writeLog("luabuzui.ok to startluabuzui")
-				player:GPSset(buzuistatekey, 1)
+				room:setPlayerMark(player, buzuistatekey, 1)
 			else
 				writeLog("luabuzui.No to skipluabuzui")
-				player:GPSset(buzuistatekey, 0)
+				room:setPlayerMark(player, buzuistatekey, 0)
 			end
 		end
 
