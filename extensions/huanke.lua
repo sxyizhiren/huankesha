@@ -9,7 +9,8 @@ shengjianfeng=sgs.General(extension, "shengjianfeng", "qun", "3")
 taoqiuping=sgs.General(extension, "taoqiuping", "qun", "3", false)
 sunchanchan=sgs.General(extension, "sunchanchan", "qun", "3", false)
 tangqiaozhi=sgs.General(extension, "tangqiaozhi", "qun", "3")
-xiezhe=sgs.General(extension, "xiezhe", "qun", "30")
+xiezhe=sgs.General(extension, "xiezhe$", "qun", "3")
+laiwenfeng=sgs.General(extension, "laiwenfeng$", "qun", "4")
 ------------------------------------
 function newMessage(logtype,from,to,arg)
 	local log = sgs.LogMessage()
@@ -19,7 +20,11 @@ function newMessage(logtype,from,to,arg)
 	log.arg = arg
 	return log
 end
+--[[
+name名加#开头使技能名不显示，但依然运行
+name名加$结尾表示主公时显示，非主公不显示，但是依然是运行的
 
+]]
 
 
 --写
@@ -651,7 +656,7 @@ luabuzui = sgs.CreateTriggerSkill
 		local buzuistatekey = "buzuistate"
 		local room = player:getRoom()
 		
-		if( player:GPSget(buzuistatekey)==1) then
+		if( player:getMark(buzuistatekey)==1) then
 			writeLog("luabuzui.shouldSkipPlay")
 			room:setPlayerMark(player, buzuistatekey, 2)
 		else
@@ -680,7 +685,7 @@ luabuzuiskip = sgs.CreateTriggerSkill
 		local buzuistatekey = "buzuistate"
 		local room = player:getRoom()
 		local change=data:toPhaseChange()
-		if((change.to==sgs.Player_Play) and (player:GPSget(buzuistatekey)==2)) then
+		if((change.to==sgs.Player_Play) and (player:getMark(buzuistatekey)==2)) then
 			room:broadcastSkillInvoke("luabuzui")
 			writeLog("#luabuzuiskip.skipPlay")
 			return true --跳过出牌阶段
@@ -690,9 +695,203 @@ luabuzuiskip = sgs.CreateTriggerSkill
 }
 
 
+luayuenv = sgs.CreateProhibitSkill
+{--阅女
+	name = "luayuenv",
+	is_prohibited = function(self, from, to, card)
+		if( (to:hasSkill("luayuenv")) and  (card:inherits("TrickCard")) and (not from:getGeneral():isMale()) )then
+			writeLog("sgs.CreateProhibitSkill.yuenv")
+			return true
+		end
+	end,
+}
+
+luazaotacard = sgs.CreateSkillCard
+{--糟蹋技能卡 ，与美男技能卡相同，
+	name = "luazaotacard", --for translation key
+	target_fixed = false,--需要手动选择目标
+	will_throw = true,--卡牌会进入弃牌堆
+	once = true,--主动发动，每回合一次
+	
+	filter = function(self, targets, to_select, player)
+		if(#targets >= 1) then return false end	--already select 0
+		return true --(not to_select:getGeneral():isMale())
+	end,
+	
+	on_effect = function(self, effect)
+		local room = effect.from:getRoom()
+		
+		local recov = sgs.RecoverStruct()
+		recov.recover = 1
+		recov.card = self
+		recov.who = effect.from		
+		room:recover(effect.from, recov)
+
+		--[[
+		这个方法掉血后没学也不会死
+		local recovTo = sgs.RecoverStruct()
+		recovTo.recover = -2
+		recovTo.card = self
+		recovTo.who = effect.from		
+		room:recover(effect.to, recovTo)		
+		]]
+		local damage = sgs.DamageStruct()
+		damage.from = effect.from
+		damage.to = effect.to
+		damage.damage = 1
+		damage.card = self		
+		room:damage(damage)
+		
+		room:broadcastSkillInvoke("luazaota") --play audio
+		--setEmotion可动画
+		room:setPlayerFlag(effect.from, "luazaota-used")
+	end
+}
+
+luazaota = sgs.CreateViewAsSkill
+{--糟蹋
+	name = "luazaota$",
+	--name = "luazaota",
+	n = 1,
+	
+	enabled_at_play = function(self, player)
+		local zaotastate = "zaotastate"
+		writeLog("luazaotaaction.enabled_at_play,"..tostring(player:getMark(zaotastate)).."   "..tostring(not sgs.Self:hasFlag("luazaota-used")))
+		return (player:getMark(zaotastate) == 1) and (not player:hasFlag("luazaota-used"))
+	end,
+	
+	view_filter = function(self, selected, to_select)
+		return (#selected == 0 and to_select:isKindOf("EquipCard"))	--装备牌
+	end,
+	
+	view_as = function(self, cards)
+		if #cards ~= 1 then return nil end
+		local new_card = luazaotacard:clone()
+		new_card:addSubcard(cards[1])
+		new_card:setSkillName(self:objectName())
+		return new_card
+	end
+}
+
+luazaotaaction = sgs.CreateTriggerSkill
+{	
+	name = "#luazaotaaction$",	
+	--name = "#luazaotaaction$",	
+	events = {sgs.DrawNCards},
+	on_trigger = function(self, event, player, data)
+		writeLog("sgs.CreateTriggerSkill.luazaotaaction")
+		local room = player:getRoom()
+		if(not player:isLord()) then 
+			return false
+		end
+		local zaotastate = "zaotastate"
+		if (room:askForSkillInvoke(player, "luazaota")) then
+			local x = data:toInt()
+			writeLog("sgs.CreateTriggerSkill.luazaotaaction.invoke,skip card " .. tostring(x))
+			data:setValue(0)			
+			--player:setMark(zaotastate,1)
+			room:setPlayerMark(player, zaotastate, 1)
+		else
+			--player:setMark(zaotastate,0)
+			room:setPlayerMark(player, zaotastate, 0)
+		end
+	end
+}
+
 xiezhe:addSkill(luabuzui)
 xiezhe:addSkill(luabuzuiskip)
 xiezhe:addSkill(luabuzuiBuff)
+
+xiezhe:addSkill(luayuenv)
+
+xiezhe:addSkill(luazaota)
+xiezhe:addSkill(luazaotaaction)
+--------------------------------------
+
+luachoujin_card = sgs.CreateSkillCard
+{--抽筋技能卡 
+	name = "luachoujin", --for translation key
+	target_fixed = true,
+	will_throw = false,
+	
+	on_use = function(self, room, source, targets)
+		room:loseHp(source)
+		room:broadcastSkillInvoke("luachoujin") --play audio
+		if(source:isAlive()) then
+			room:drawCards(source, 2)
+		end
+	end,
+	
+	enabled_at_play = function()
+		return true
+	end
+}
+
+luachoujin = sgs.CreateViewAsSkill
+{--抽筋 
+	name = "luachoujin",
+	n = 0,
+	
+	enabled_at_play = function()
+		local selfHP = sgs.Self:getHp();
+		writeLog("luachoujin now HP=" .. tostring(selfHP))
+		return selfHP <= 2
+	end,
+	
+	view_as = function(self, cards)
+		local card = luachoujin_card:clone()
+		card:setSkillName(self:objectName())
+		return card
+	end
+}
+
+luashualai_card = sgs.CreateSkillCard
+{--耍赖
+	name = "luashualai", --for translation key
+	target_fixed = false,--需要手动选择目标
+	will_throw = false,--卡牌会进入弃牌堆
+	once = true,--主动发动，每回合一次
+	
+	filter = function(self, targets, to_select, player)
+		if(#targets >= 1) then return false end	--already select 0
+		return (player:distanceTo(to_select) < 2) and (to_select:hasEquip())
+	end,
+	
+	on_effect = function(self, effect)
+		local room = effect.from:getRoom()
+		local from = effect.from
+		local to = effect.to		
+		writeLog("luashualai_card.select getCard")
+		local card_id = room:askForCardChosen(from, to, "e", "luashualai")
+		writeLog("luashualai_card.after select Card")
+		room:obtainCard(from, card_id)
+		writeLog("luashualai_card.getCard")
+		room:broadcastSkillInvoke("luashualai") --play audio
+		--setEmotion可动画
+		room:setPlayerFlag(effect.from, "luashualai-used")
+	end
+}
+
+luashualai = sgs.CreateViewAsSkill
+{--耍赖
+	name = "luashualai$",
+	n = 0,
+	
+	enabled_at_play = function()
+		return (not sgs.Self:hasFlag("luashualai-used"))
+	end,
+	
+	view_as = function(self, cards)
+		local card = luashualai_card:clone()
+		card:setSkillName(self:objectName())
+		return card
+	end
+}
+
+
+
+laiwenfeng:addSkill(luachoujin)
+laiwenfeng:addSkill(luashualai)
 
 --------------------------------------
 sgs.LoadTranslationTable{
@@ -796,7 +995,26 @@ sgs.LoadTranslationTable{
 	["luabuzui"]="不醉",
 	["$luabuzui"]="不醉的声音文字描述",
 	[":luabuzui"]="不醉，选择不醉状态后本回合可以无限出杀，但下轮不得出牌",
+	["luayuenv"]="阅女",
+	["$luayuenv"]="阅女的声音文字描述",
+	[":luayuenv"]="阅女，女性角色不能对其使用锦囊",
+	["luazaota"]="糟蹋",
+	["$luazaota"]="糟蹋的声音文字描述",
+	["@luazaotaaskforequipcard"]="选择一张装备牌",
+	[":luazaota"]="主公技。每回合可放弃摸牌选择任意一名女性角色口一滴血，并弃一张装备牌",
 
+	["laiwenfeng"] = "赖文峰",
+	["$laiwenfeng"] = "老赖",
+	["#laiwenfeng"] = "老赖",
+	["designer:laiwenfeng"] = "小明",
+	["cv:laiwenfeng"] = "老赖配音",
+	["illustrator:laiwenfeng"] = "老赖画图",
+	["luachoujin"]="抽筋",
+	["$luachoujin"]="抽筋的声音文字描述",
+	[":luachoujin"]="抽筋，体力值小于等于2时进入抽筋状态，摸两张牌，扣一滴血",
+	["luashualai"]="耍赖",
+	["$luashualai"]="耍赖的声音文字描述",
+	[":luashualai"]="主公技。耍赖，每回合可偷距离内的一名角色一张装备牌",
 
 }
 
