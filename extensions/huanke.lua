@@ -11,6 +11,7 @@ sunchanchan=sgs.General(extension, "sunchanchan", "qun", "3", false)
 tangqiaozhi=sgs.General(extension, "tangqiaozhi", "qun", "3")
 xiezhe=sgs.General(extension, "xiezhe$", "qun", "3")
 laiwenfeng=sgs.General(extension, "laiwenfeng$", "qun", "4")
+konghaidong=sgs.General(extension, "konghaidong", "qun", "3")
 ------------------------------------
 function newMessage(logtype,from,to,arg)
 	local log = sgs.LogMessage()
@@ -892,7 +893,120 @@ luashualai = sgs.CreateViewAsSkill
 
 laiwenfeng:addSkill(luachoujin)
 laiwenfeng:addSkill(luashualai)
+--------------------------------------
 
+luachengguancard = sgs.CreateSkillCard{
+	name = "luachengguancard",
+	target_fixed = false,
+	will_throw = true,
+	filter = function(self, targets, to_select)
+		if (#targets >= 2) or (to_select:objectName() == sgs.Self:objectName()) or (to_select:getCardCount(false,false) <= 0) then
+			return false
+		end
+		return true
+	end,
+	on_use = function(self, room, source, targets)
+		local maxSelectedCard = 3
+		room:broadcastSkillInvoke("luachengguan") --play audio
+		for i=1,maxSelectedCard,1 do
+			local toSel = sgs.SPlayerList()
+			toSel:append(source)
+			if(targets[2]) and (targets[2]:getCardCount(false,false) > 0) then
+				toSel:append(targets[2])
+			end
+			if(targets[1]) and (targets[1]:getCardCount(false,false) > 0) then
+				toSel:append(targets[1])
+			end
+			--
+			writeLog("luachengguancard.select player")
+			local playerTo = room:askForPlayerChosen(source, toSel, "luachengguan","@chengguanchosetips")
+			if(playerTo:objectName() == source:objectName()) then
+				writeLog("luachengguancard.skip select")
+				break
+			end
+			writeLog("luachengguancard.select card")
+			local card_id = room:askForCardChosen(source, playerTo, "h", "luachengguan")
+			writeLog("luachengguancard.get card")
+			room:obtainCard(source, card_id)
+			writeLog("luachengguancard.have select around")
+		end
+		
+	end
+}
+luachengguanvs = sgs.CreateViewAsSkill{
+	name = "luachengguan",
+	n = 0,
+	view_as = function(self, cards)
+		return luachengguancard:clone()
+	end,
+	enabled_at_play = function(self, player)
+		return false
+	end,
+	enabled_at_response = function(self, player, pattern)
+		writeLog("pattern->".. pattern)
+		return pattern == "@@luachengguanpattern"
+	end
+}
+
+luachengguan = sgs.CreateTriggerSkill{
+	name = "luachengguan",
+	frequency = sgs.Skill_NotFrequent,
+	events = {sgs.EventPhaseStart},
+	view_as_skill = luachengguanvs,
+	on_trigger = function(self, event, player, data)
+		if player:getPhase() == sgs.Player_Draw then
+			local room = player:getRoom()
+			local can_invoke = false
+			local other_players = room:getOtherPlayers(player)
+			for _,target in sgs.qlist(other_players) do
+				if target:getCardCount(false,false) > 0 then
+					can_invoke = true
+					break;
+				end
+			end
+			if can_invoke then
+				if room:askForUseCard(player, "@@luachengguanpattern", "@invokeluachengguanask") then
+					return true
+				end
+			end
+		end
+		return false
+	end
+}
+---
+luazhuxi = sgs.CreateTriggerSkill
+{
+	name = "luazhuxi",
+	events = {sgs.CardAsked},
+	on_trigger = function(self,event,player,data)
+		writeLog("luazhuxi.card asked")
+		local room = player:getRoom()
+		local pattern = data:toStringList()[1]
+		writeLog("luazhuxi.card asked pattern " .. pattern)
+		if ((pattern == "jink") and
+			(room:askForSkillInvoke(player, "luazhuxi"))) then
+			writeLog("luazhuxi. invoke")
+			room:broadcastSkillInvoke("zhuxi") --play audio
+
+			for _,p in sgs.qlist(room:getOtherPlayers(player)) do
+				local data = sgs.QVariant(0)
+
+				data:setValue(player)
+				local jink = room:askForCard(p, "jink", "@luazhuxi-jink:"..player:objectName(), data)
+				if (jink) then
+					room:provide(jink)
+					return true
+				end
+
+			end
+
+		end
+		writeLog("luazhuxi. end")
+	end
+}
+
+konghaidong:addSkill(luachengguan)
+konghaidong:addSkill(luazhuxi)
 --------------------------------------
 sgs.LoadTranslationTable{
 	["huanke"] = "环科包",
@@ -1016,5 +1130,19 @@ sgs.LoadTranslationTable{
 	["$luashualai"]="耍赖的声音文字描述",
 	[":luashualai"]="主公技。耍赖，每回合可偷距离内的一名角色一张装备牌",
 
+	["konghaidong"] = "孔海东",
+	["$konghaidong"] = "黑洞",
+	["#konghaidong"] = "黑洞",
+	["designer:konghaidong"] = "小明",
+	["cv:konghaidong"] = "黑洞配音",
+	["illustrator:konghaidong"] = "黑洞画图",
+	["@chengguanchosetips"] = "选择抽牌对象，选择自己表示收队",
+	["luachengguan"]="城管",
+	["@invokeluachengguanask"]="点击'城管'发动技能，点击取消不发动";
+	["$luachengguan"]="城管的声音文字描述",
+	[":luachengguan"]="城管出巡：跳过摸排抽取最多3张两名的手牌",
+	["luazhuxi"]="主席",
+	["$luazhuxi"]="主席的声音文字描述",
+	[":luazhuxi"]="社联主席：任意角色替他出杀",
 }
 
