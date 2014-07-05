@@ -12,6 +12,7 @@ tangqiaozhi=sgs.General(extension, "tangqiaozhi", "qun", "3")
 xiezhe=sgs.General(extension, "xiezhe$", "qun", "3")
 laiwenfeng=sgs.General(extension, "laiwenfeng$", "qun", "4")
 konghaidong=sgs.General(extension, "konghaidong", "qun", "3")
+chenxusheng=sgs.General(extension, "chenxusheng", "qun", "3")
 ------------------------------------
 function newMessage(logtype,from,to,arg)
 	local log = sgs.LogMessage()
@@ -974,25 +975,114 @@ luachengguan = sgs.CreateTriggerSkill{
 	end
 }
 ---
-luazhuxi = sgs.CreateTriggerSkill
-{
-	name = "luazhuxi",
-	events = {sgs.CardAsked},
-	on_trigger = function(self,event,player,data)
-		writeLog("luazhuxi.card asked")
+
+luazhuxicard = sgs.CreateSkillCard{
+	name = "luazhuxicard" ,
+	filter = function(self, targets, to_select)
+		local slash = sgs.Sanguosha:cloneCard("slash", sgs.Card_NoSuit, 0)
+		local plist = sgs.PlayerList()
+		for i = 1, #targets, 1 do
+			plist:append(targets[i])
+		end
+		return slash:targetFilter(plist, to_select, sgs.Self)
+	end ,
+	on_validate = function(self, cardUse) 
+		cardUse.m_isOwnerUse = false
+		local liubei = cardUse.from
+		local targets = cardUse.to
+		room = liubei:getRoom()
+		local slash = nil
+		local others = room:getOtherPlayers(liubei)
+		--for _, target in sgs.qlist(targets) do
+			--target:setFlags("luazhuxitarget")
+		--end
+		room:broadcastSkillInvoke("luazhuxi") --play audio
+		for _, liege in sgs.qlist(others) do
+			slash = room:askForCard(liege, "slash", "@luazhuxi-slash:" .. liubei:objectName(), sgs.QVariant(), sgs.Card_MethodResponse, liubei) --未处理胆守
+			if slash then
+				--for _, target in sgs.qlist(targets) do
+					--target:setFlags("-luazhuxitarget")
+				--end
+				return slash
+			end
+		end
+		--for _, target in sgs.qlist(targets) do
+			--target:setFlags("-luazhuxitarget")
+		--end
+		room:setPlayerFlag(liubei, "luazhuxi_failed")
+		return nil
+	end
+}
+
+luazhuxivs = sgs.CreateViewAsSkill{
+	name = "luazhuxi" ,
+	n = 0 ,
+	view_as = function()
+		return luazhuxicard:clone()
+	end ,
+	enabled_at_play = function(self, player)
+		return player:hasSkill("luazhuxi")
+		   and (not player:hasFlag("luazhuxi_failed"))
+		   and sgs.Slash_IsAvailable(player)
+	end ,
+	enabled_at_response = function(self, player, pattern)
+		return player:hasSkill("luazhuxi")
+		   and ((pattern == "slash") or (pattern == "@luazhuxi"))
+		   and (sgs.Sanguosha:getCurrentCardUseReason() == sgs.CardUseStruct_CARD_USE_REASON_RESPONSE_USE)
+		   and (not player:hasFlag("luazhuxi_failed"))
+	end
+}
+
+luazhuxi = sgs.CreateTriggerSkill{
+	name = "luazhuxi" ,
+	events = {sgs.CardAsked} ,
+	view_as_skill = luazhuxivs ,
+	on_trigger = function(self, event, player, data)
 		local room = player:getRoom()
 		local pattern = data:toStringList()[1]
-		writeLog("luazhuxi.card asked pattern " .. pattern)
-		if ((pattern == "jink") and
-			(room:askForSkillInvoke(player, "luazhuxi"))) then
-			writeLog("luazhuxi. invoke")
-			room:broadcastSkillInvoke("zhuxi") --play audio
+		local prompt = data:toStringList()[2]
+		if (pattern ~= "slash") then return false end
+		local others = room:getOtherPlayers(player)
+		if others:isEmpty() then return false end
+		room:broadcastSkillInvoke("luazhuxi") --play audio
+		if not room:askForSkillInvoke(player, self:objectName(), data) then return false end
+		for _, liege in sgs.qlist(others) do
+			local slash = room:askForCard(liege, "slash", "@luazhuxi-slash:" .. player:objectName(), sgs.QVariant(), sgs.Card_MethodResponse, player)
+			if slash then
+				room:provide(slash)
+				return true
+			end
+		end
+		return false
+	end ,
+	can_trigger = function(self, target)
+		return target and target:hasSkill("luazhuxi")
+	end
+}
 
+konghaidong:addSkill(luachengguan)
+konghaidong:addSkill(luazhuxi)
+--------------------------------------
+
+luashushu = sgs.CreateTriggerSkill
+{
+	name = "luashushu",
+	events = {sgs.CardAsked},
+	on_trigger = function(self,event,player,data)
+		writeLog("luashushu.card asked")
+		local room = player:getRoom()
+		local pattern = data:toStringList()[1]
+		writeLog("luashushu.card asked pattern " .. pattern)
+		if ((pattern == "jink") and
+			(room:askForSkillInvoke(player, "luashushu"))) then
+			writeLog("luashushu. invoke")
+			room:broadcastSkillInvoke("luashushu") --play audio
+			
 			for _,p in sgs.qlist(room:getOtherPlayers(player)) do
 				local data = sgs.QVariant(0)
 
 				data:setValue(player)
-				local jink = room:askForCard(p, "jink", "@luazhuxi-jink:"..player:objectName(), data)
+				local jink = room:askForCard(p, "jink", "@luashushu-jink:"..player:objectName(), data)
 				if (jink) then
 					room:provide(jink)
 					return true
@@ -1001,12 +1091,31 @@ luazhuxi = sgs.CreateTriggerSkill
 			end
 
 		end
-		writeLog("luazhuxi. end")
+		writeLog("luashushu. end")
 	end
 }
 
-konghaidong:addSkill(luachengguan)
-konghaidong:addSkill(luazhuxi)
+luaqiaoke = sgs.CreateTriggerSkill
+{--跷课
+	name = "luaqiaoke",
+	events = {sgs.CardEffected},
+	
+	on_trigger = function(self, event, player, data)
+		local room = player:getRoom()
+
+		local effect = data:toCardEffect()
+		if (effect.card:inherits("AOE")) then
+			return true 
+		end
+
+	end
+}
+
+
+
+chenxusheng:addSkill(luashushu)
+chenxusheng:addSkill(luaqiaoke)
+
 --------------------------------------
 sgs.LoadTranslationTable{
 	["huanke"] = "环科包",
@@ -1138,11 +1247,24 @@ sgs.LoadTranslationTable{
 	["illustrator:konghaidong"] = "黑洞画图",
 	["@chengguanchosetips"] = "选择抽牌对象，选择自己表示收队",
 	["luachengguan"]="城管",
-	["@invokeluachengguanask"]="点击'城管'发动技能，点击取消不发动";
+	["@invokeluachengguanask"]="若发动技能：点击'城管',并选择要抽牌的角色；若不发动，点击取消";
 	["$luachengguan"]="城管的声音文字描述",
 	[":luachengguan"]="城管出巡：跳过摸排抽取最多3张两名的手牌",
 	["luazhuxi"]="主席",
 	["$luazhuxi"]="主席的声音文字描述",
 	[":luazhuxi"]="社联主席：任意角色替他出杀",
+	
+	["chenxusheng"] = "陈许胜",
+	["$chenxusheng"] = "叔叔",
+	["#chenxusheng"] = "叔叔",
+	["designer:chenxusheng"] = "小明",
+	["cv:chenxusheng"] = "叔叔配音",
+	["illustrator:chenxusheng"] = "叔叔画图",
+	["luashushu"]="叔叔",
+	["$luashushu"]="叔叔的声音文字描述",
+	[":luashushu"]="叔叔，男性角色可以给他闪",
+	["luaqiaoke"]="跷课",
+	["$luaqiaoke"]="跷课的声音文字描述",
+	[":luaqiaoke"]="翘课，南蛮万➹无效",
 }
 
